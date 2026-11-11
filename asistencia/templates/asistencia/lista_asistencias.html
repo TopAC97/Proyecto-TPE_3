@@ -1,0 +1,55 @@
+{% extends 'asistencia/base.html' %}
+
+{% block titulo %}Historial de asistencias{% endblock %}
+
+{% block contenido %}
+<main class="contenedor">
+    <section class="panel panel-ancho">
+        <div class="panel-cabecera">
+            <div class="panel-icono"><svg class="icono"><use href="#i-historial"/></svg></div>
+            <h2>Historial de asistencias</h2>
+            <span class="chip chip-lavanda">{{ registros|length }} registro{{ registros|length|pluralize }}</span>
+        </div>
+
+        <div class="tabla-contenedor">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Estudiante</th>
+                        <th>Clase</th>
+                        <th>Fecha</th>
+                        <th>Hora</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for registro in registros %}
+                    <tr>
+                        <td>{{ registro.nombre }}</td>
+                        <td>{{ registro.clase }}</td>
+                        <td>{{ registro.fecha }}</td>
+                        <td>{{ registro.hora }}</td>
+                        <td>
+                            {% if registro.estado == 'tardanza' %}
+                            <span class="estado estado-tardanza"><svg class="icono"><use href="#i-reloj"/></svg>Tardanza</span>
+                            {% else %}
+                            <span class="estado estado-presente"><svg class="icono"><use href="#i-check"/></svg>Presente</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr class="vacio">
+                        <td colspan="5">Todavía no hay asistencias registradas.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <a class="boton volver" href="{% url 'inicio' %}">
+            <svg class="icono"><use href="#i-volver"/></svg>
+            Volver a la cámara
+        </a>
+    </section>
+</main>
+{% endblock %}

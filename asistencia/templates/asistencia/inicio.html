@@ -1,2 +1,289 @@
-<h1>Control de asistencia</h1>
-<img src="{% url 'video_feed' %}" width="640">
+{% extends 'asistencia/base.html' %}
+
+{% block contenido %}
+<main class="contenedor">
+
+    <!-- Resumen del día -->
+    <section class="resumen" aria-label="Resumen del día">
+        <article class="stat stat-presente">
+            <div class="stat-icono"><svg class="icono"><use href="#i-usuarios"/></svg></div>
+            <div>
+                <p class="stat-titulo">Presentes</p>
+                <p class="stat-valor" id="total-presentes">{{ resumen.presentes }}</p>
+            </div>
+            <svg class="icono destello"><use href="#i-destello"/></svg>
+        </article>
+
+        <article class="stat stat-tardanza">
+            <div class="stat-icono"><svg class="icono"><use href="#i-reloj"/></svg></div>
+            <div>
+                <p class="stat-titulo">Tardanzas</p>
+                <p class="stat-valor" id="total-tardanzas">{{ resumen.tardanzas }}</p>
+            </div>
+            <svg class="icono destello"><use href="#i-destello"/></svg>
+        </article>
+
+        <article class="stat stat-ausente">
+            <div class="stat-icono"><svg class="icono"><use href="#i-x"/></svg></div>
+            <div>
+                <p class="stat-titulo">Ausentes</p>
+                <p class="stat-valor" id="total-ausentes">{{ resumen.ausentes }}</p>
+            </div>
+            <svg class="icono destello"><use href="#i-destello"/></svg>
+        </article>
+    </section>
+
+    <div class="paneles">
+
+        <!-- Cámara -->
+        <section class="panel">
+            <div class="panel-cabecera">
+                <div class="panel-icono"><svg class="icono"><use href="#i-camara"/></svg></div>
+                <h2>Cámara en tiempo real</h2>
+                <span class="chip chip-activa" id="estado-camara">
+                    <span class="punto"></span><span id="estado-camara-texto">Cámara activa</span>
+                </span>
+            </div>
+
+            <div class="camara">
+                <div class="camara-placeholder" aria-hidden="true">
+                    <svg viewBox="0 0 100 100" fill="currentColor">
+                        <circle cx="50" cy="36" r="20"/>
+                        <path d="M14 92c0-20 16-32 36-32s36 12 36 32z"/>
+                    </svg>
+                </div>
+                <img class="camara-video" id="video" src="{% url 'video_feed' %}" alt="Video de la cámara">
+                <div class="marco" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+            </div>
+
+            <p class="camara-ayuda">Ubica tu rostro dentro del marco</p>
+
+            <div class="horario-actual {% if horario.abierto %}abierto{% else %}cerrado{% endif %}" id="horario-actual">
+                <svg class="icono"><use href="#i-reloj"/></svg>
+                <div id="horario-texto">
+                    {% if horario.abierto %}
+                    <strong>Asistencia abierta · {{ horario.nombre }}</strong>
+                    <span>{{ horario.inicio }} – {{ horario.fin }} · Tardanza desde {{ horario.tardanza }}</span>
+                    {% else %}
+                    <strong>Fuera de horario</strong>
+                    <span>Las llegadas se registran sin clase asignada.</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <a class="boton" href="{% url 'horarios' %}">
+                <svg class="icono"><use href="#i-editar"/></svg>
+                Editar horarios
+            </a>
+        </section>
+
+        <!-- Registro -->
+        <section class="panel">
+            <div class="panel-cabecera">
+                <div class="panel-icono"><svg class="icono"><use href="#i-lista"/></svg></div>
+                <h2>Registro de asistencia</h2>
+                <span class="chip chip-lavanda" id="chip-clase">{% if horario %}{{ horario.nombre }} · {{ horario.turno }}{% else %}Hoy{% endif %}</span>
+            </div>
+
+            <div class="tabla-contenedor">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Estudiante</th>
+                            <th>Hora</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="tabla-asistencias">
+                        {% for registro in registros %}
+                        <tr>
+                            <td>{{ registro.nombre }}</td>
+                            <td>{{ registro.hora }}</td>
+                            <td>
+                                {% if registro.estado == 'tardanza' %}
+                                <span class="estado estado-tardanza"><svg class="icono"><use href="#i-reloj"/></svg>Tardanza</span>
+                                {% else %}
+                                <span class="estado estado-presente"><svg class="icono"><use href="#i-check"/></svg>Presente</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr class="vacio">
+                            <td colspan="3">Todavía no hay asistencias registradas hoy.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="ausentes" id="bloque-ausentes" {% if not ausentes %}hidden{% endif %}>
+                <h3>Aún no llegan</h3>
+                <ul class="ausentes-lista" id="lista-ausentes">
+                    {% for nombre in ausentes %}<li>{{ nombre }}</li>{% endfor %}
+                </ul>
+            </div>
+
+            <div class="aviso" id="aviso" role="status" aria-live="polite">
+                <span class="aviso-check"><svg class="icono"><use href="#i-check"/></svg></span>
+                <span>¡Listo! Asistencia registrada <span class="aviso-nombre" id="aviso-nombre"></span></span>
+                <svg class="icono destello"><use href="#i-destello"/></svg>
+            </div>
+        </section>
+
+    </div>
+</main>
+
+<footer class="pie">
+    Actualización automática cada 3 segundos
+</footer>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const ICONOS_ESTADO = {
+        presente: { icono: 'i-check', texto: 'Presente' },
+        tardanza: { icono: 'i-reloj', texto: 'Tardanza' },
+    };
+
+    const clave = (r) => r.nombre + '|' + r.hora;
+
+    let conocidos = new Set([
+        {% for registro in registros %}'{{ registro.nombre|escapejs }}|{{ registro.hora }}',{% endfor %}
+    ]);
+
+    let temporizadorAviso = null;
+
+    function crearEstado(estado) {
+        const datos = ICONOS_ESTADO[estado] || ICONOS_ESTADO.presente;
+        const span = document.createElement('span');
+        span.className = 'estado estado-' + estado;
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'icono');
+        const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+        use.setAttribute('href', '#' + datos.icono);
+        svg.appendChild(use);
+
+        span.appendChild(svg);
+        span.appendChild(document.createTextNode(datos.texto));
+        return span;
+    }
+
+    function mostrarAviso(nombre) {
+        const aviso = document.getElementById('aviso');
+        document.getElementById('aviso-nombre').textContent = '· ' + nombre;
+        aviso.classList.add('visible');
+
+        clearTimeout(temporizadorAviso);
+        temporizadorAviso = setTimeout(() => aviso.classList.remove('visible'), 5000);
+    }
+
+    function pintarTabla(registros, nuevos) {
+        const tabla = document.getElementById('tabla-asistencias');
+        tabla.innerHTML = '';
+
+        if (registros.length === 0) {
+            const fila = document.createElement('tr');
+            fila.className = 'vacio';
+            const celda = document.createElement('td');
+            celda.colSpan = 3;
+            celda.textContent = 'Todavía no hay asistencias registradas hoy.';
+            fila.appendChild(celda);
+            tabla.appendChild(fila);
+            return;
+        }
+
+        registros.forEach(registro => {
+            const fila = document.createElement('tr');
+            if (nuevos.has(clave(registro))) fila.className = 'fila-nueva';
+
+            const nombre = document.createElement('td');
+            nombre.textContent = registro.nombre;
+
+            const hora = document.createElement('td');
+            hora.textContent = registro.hora;
+
+            const estado = document.createElement('td');
+            estado.appendChild(crearEstado(registro.estado));
+
+            fila.append(nombre, hora, estado);
+            tabla.appendChild(fila);
+        });
+    }
+
+    function pintarAusentes(ausentes) {
+        const bloque = document.getElementById('bloque-ausentes');
+        const lista = document.getElementById('lista-ausentes');
+        lista.innerHTML = '';
+
+        ausentes.forEach(nombre => {
+            const li = document.createElement('li');
+            li.textContent = nombre;
+            lista.appendChild(li);
+        });
+
+        bloque.hidden = ausentes.length === 0;
+    }
+
+    function pintarHorario(horario) {
+        const caja = document.getElementById('horario-actual');
+        const texto = document.getElementById('horario-texto');
+        const abierto = horario && horario.abierto;
+
+        caja.className = 'horario-actual ' + (abierto ? 'abierto' : 'cerrado');
+        texto.innerHTML = '';
+
+        const titulo = document.createElement('strong');
+        const detalle = document.createElement('span');
+
+        if (abierto) {
+            titulo.textContent = 'Asistencia abierta · ' + horario.nombre;
+            detalle.textContent = horario.inicio + ' – ' + horario.fin + ' · Tardanza desde ' + horario.tardanza;
+        } else {
+            titulo.textContent = 'Fuera de horario';
+            detalle.textContent = 'Las llegadas se registran sin clase asignada.';
+        }
+
+        texto.append(titulo, detalle);
+        document.getElementById('chip-clase').textContent = horario ? horario.nombre + ' · ' + horario.turno : 'Hoy';
+    }
+
+    function actualizarAsistencias() {
+        fetch("{% url 'obtener_asistencias' %}")
+            .then(response => response.json())
+            .then(data => {
+                const nuevos = new Set(
+                    data.asistencias.map(clave).filter(k => !conocidos.has(k))
+                );
+
+                pintarTabla(data.asistencias, nuevos);
+                pintarAusentes(data.ausentes);
+                pintarHorario(data.horario);
+
+                document.getElementById('total-presentes').textContent = data.resumen.presentes;
+                document.getElementById('total-tardanzas').textContent = data.resumen.tardanzas;
+                document.getElementById('total-ausentes').textContent = data.resumen.ausentes;
+
+                if (nuevos.size > 0) {
+                    const ultimo = data.asistencias.find(r => nuevos.has(clave(r)));
+                    mostrarAviso(ultimo.nombre);
+                }
+
+                conocidos = new Set(data.asistencias.map(clave));
+            })
+            .catch(error => console.log('Error:', error));
+    }
+
+    // Estado de la cámara
+    const video = document.getElementById('video');
+    video.addEventListener('error', () => {
+        video.hidden = true;
+        const chip = document.getElementById('estado-camara');
+        chip.classList.replace('chip-activa', 'chip-inactiva');
+        document.getElementById('estado-camara-texto').textContent = 'Cámara sin señal';
+    });
+
+    setInterval(actualizarAsistencias, 3000);
+</script>
+{% endblock %}

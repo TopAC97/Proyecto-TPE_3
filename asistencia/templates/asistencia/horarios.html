@@ -1,0 +1,159 @@
+{% extends 'asistencia/base.html' %}
+
+{% block titulo %}Horarios de asistencia{% endblock %}
+
+{% block contenido %}
+<main class="contenedor">
+
+    {% if messages %}
+    <div class="mensajes">
+        {% for message in messages %}
+        <div class="mensaje">
+            <span class="aviso-check"><svg class="icono"><use href="#i-check"/></svg></span>
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="paneles paneles-horarios">
+
+        <!-- Formulario -->
+        <section class="panel">
+            <div class="panel-cabecera">
+                <div class="panel-icono">
+                    <svg class="icono"><use href="{% if editando %}#i-editar{% else %}#i-mas{% endif %}"/></svg>
+                </div>
+                <h2>{% if editando %}Editar horario{% else %}Nuevo horario{% endif %}</h2>
+            </div>
+
+            <form method="post" class="formulario" novalidate>
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                <div class="error-form">{{ form.non_field_errors.0 }}</div>
+                {% endif %}
+
+                <div class="campo">
+                    <label for="{{ form.nombre.id_for_label }}">{{ form.nombre.label }}</label>
+                    {{ form.nombre }}
+                    {% for error in form.nombre.errors %}<small class="error">{{ error }}</small>{% endfor %}
+                </div>
+
+                <div class="campo">
+                    <span class="etiqueta-campo">Turno (rellena las horas, luego puedes ajustarlas)</span>
+                    <div class="turnos" role="group" aria-label="Elegir turno">
+                        <button type="button" class="turno" data-inicio="07:00" data-tardanza="07:15" data-fin="12:00">Mañana</button>
+                        <button type="button" class="turno" data-inicio="13:00" data-tardanza="13:15" data-fin="18:00">Tarde</button>
+                        <button type="button" class="turno" data-inicio="19:00" data-tardanza="19:15" data-fin="22:00">Noche</button>
+                    </div>
+                </div>
+
+                <div class="campos-horas">
+                    <div class="campo">
+                        <label for="{{ form.hora_inicio.id_for_label }}">
+                            <span class="punto-color punto-presente"></span>{{ form.hora_inicio.label }}
+                        </label>
+                        {{ form.hora_inicio }}
+                        {% for error in form.hora_inicio.errors %}<small class="error">{{ error }}</small>{% endfor %}
+                    </div>
+
+                    <div class="campo">
+                        <label for="{{ form.hora_tardanza.id_for_label }}">
+                            <span class="punto-color punto-tardanza"></span>{{ form.hora_tardanza.label }}
+                        </label>
+                        {{ form.hora_tardanza }}
+                        {% for error in form.hora_tardanza.errors %}<small class="error">{{ error }}</small>{% endfor %}
+                    </div>
+
+                    <div class="campo">
+                        <label for="{{ form.hora_fin.id_for_label }}">
+                            <span class="punto-color punto-ausente"></span>{{ form.hora_fin.label }}
+                        </label>
+                        {{ form.hora_fin }}
+                        {% for error in form.hora_fin.errors %}<small class="error">{{ error }}</small>{% endfor %}
+                    </div>
+                </div>
+
+                <p class="ayuda-form">
+                    Formato de 24 horas (00:00 – 23:59). Desde el <strong>inicio</strong> se marca
+                    <em>Presente</em>; desde la hora de <strong>tardanza</strong> se marca <em>Tardanza</em>;
+                    quien no llega antes del <strong>fin</strong> queda <em>Ausente</em>.
+                    Si el fin es menor que el inicio (ej. 22:00 → 00:00), la clase termina al día siguiente.
+                </p>
+
+                <div class="acciones-form">
+                    <button type="submit" class="boton">
+                        <svg class="icono"><use href="#i-check"/></svg>
+                        {% if editando %}Guardar cambios{% else %}Registrar horario{% endif %}
+                    </button>
+                    {% if editando %}
+                    <a href="{% url 'horarios' %}" class="boton-secundario">Cancelar</a>
+                    {% endif %}
+                </div>
+            </form>
+        </section>
+
+        <!-- Lista -->
+        <section class="panel">
+            <div class="panel-cabecera">
+                <div class="panel-icono"><svg class="icono"><use href="#i-reloj"/></svg></div>
+                <h2>Horarios registrados</h2>
+                <span class="chip chip-lavanda">{{ horarios|length }}</span>
+            </div>
+
+            {% if horarios %}
+            <ul class="lista-horarios">
+                {% for h in horarios %}
+                <li class="horario-item{% if editando and editando.pk == h.pk %} seleccionado{% endif %}">
+                    <div class="horario-info">
+                        <div class="horario-nombre">
+                            {{ h.nombre }}
+                            <span class="chip chip-lavanda">{{ h.turno }}</span>
+                            {% if h.pk == abierto_id %}
+                            <span class="chip chip-activa"><span class="punto"></span>En curso</span>
+                            {% endif %}
+                        </div>
+                        <div class="linea-tiempo" aria-label="Inicio {{ h.hora_inicio|time:'H:i' }}, tardanza desde {{ h.hora_tardanza|time:'H:i' }}, fin {{ h.hora_fin|time:'H:i' }}">
+                            <span class="tramo tramo-presente">{{ h.hora_inicio|time:"H:i" }}</span>
+                            <span class="tramo tramo-tardanza">{{ h.hora_tardanza|time:"H:i" }}</span>
+                            <span class="tramo tramo-fin">{{ h.hora_fin|time:"H:i" }}{% if h.cruza_medianoche %} <small>(+1 día)</small>{% endif %}</span>
+                        </div>
+                    </div>
+
+                    <div class="horario-acciones">
+                        <a href="{% url 'editar_horario' h.pk %}" class="boton-icono" title="Editar" aria-label="Editar {{ h.nombre }}">
+                            <svg class="icono"><use href="#i-editar"/></svg>
+                        </a>
+                        <form method="post" action="{% url 'eliminar_horario' h.pk %}"
+                              onsubmit="return confirm('¿Eliminar el horario «{{ h.nombre|escapejs }}»?');">
+                            {% csrf_token %}
+                            <button type="submit" class="boton-icono peligro" title="Eliminar" aria-label="Eliminar {{ h.nombre }}">
+                                <svg class="icono"><use href="#i-borrar"/></svg>
+                            </button>
+                        </form>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="vacio-texto">Aún no hay horarios. Registra el primero para empezar a tomar asistencia.</p>
+            {% endif %}
+        </section>
+
+    </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.querySelectorAll('.turno').forEach(boton => {
+        boton.addEventListener('click', () => {
+            document.getElementById('{{ form.hora_inicio.id_for_label }}').value = boton.dataset.inicio;
+            document.getElementById('{{ form.hora_tardanza.id_for_label }}').value = boton.dataset.tardanza;
+            document.getElementById('{{ form.hora_fin.id_for_label }}').value = boton.dataset.fin;
+            document.querySelectorAll('.turno').forEach(b => b.classList.toggle('activo', b === boton));
+        });
+    });
+</script>
+{% endblock %}
